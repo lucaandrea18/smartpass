@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartPass - Tessere & GPS</title>
-    <!-- Libreria per generare veri codici a barre a linee nere -->
+    <!-- Libreria per generare veri codici a barre -->
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <!-- Libreria per scansionare codici con la fotocamera -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -23,7 +25,6 @@
         h1 { font-size: 1.5rem; font-weight: 700; color: var(--accent-color); }
         .btn-add { background: var(--accent-color); color: #0f172a; border: none; padding: 10px 16px; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 0.95rem; }
         
-        /* Banner rilevamento vicinanza GPS */
         #proximityBanner { display: none; background: var(--success-color); color: #0f172a; padding: 14px; border-radius: 12px; margin-bottom: 20px; font-weight: bold; text-align: center; animation: pulse 1.5s infinite; cursor: pointer; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.75; } 100% { opacity: 1; } }
 
@@ -37,252 +38,11 @@
         
         /* Modal Aggiunta */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; padding: 20px; z-index: 100; }
-        .modal-content { background: var(--card-bg); width: 100%; max-width: 400px; padding: 24px; border-radius: var(--radius); display: flex; flex-direction: column; gap: 16px; }
+        .modal-content { background: var(--card-bg); width: 100%; max-width: 400px; padding: 24px; border-radius: var(--radius); display: flex; flex-direction: column; gap: 14px; }
         .modal-content h2 { font-size: 1.2rem; }
         input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: white; font-size: 1rem; }
+        .btn-scan { background: #38bdf8; color: #0f172a; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9rem; }
         .gps-section { background: #0f172a; padding: 12px; border-radius: 8px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 8px; border: 1px solid #475569; }
         .btn-gps { background: #334155; color: white; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-weight: 600; }
         .modal-buttons { display: flex; gap: 10px; margin-top: 8px; }
-        .btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; }
-        .btn-save { background: var(--accent-color); color: #0f172a; }
-        .btn-cancel { background: #475569; color: white; }
-
-        /* Vista Schermo Intero per la Cassa */
-        .fullscreen-view { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #ffffff; color: #0f172a; z-index: 200; flex-direction: column; justify-content: space-between; align-items: center; padding: 40px 20px; text-align: center; }
-        .fullscreen-view h2 { font-size: 2rem; font-weight: bold; margin-bottom: 5px; color: #0f172a; }
-        .barcode-box { background: #ffffff; padding: 20px 10px; border-radius: 12px; width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        svg#barcode { width: 100%; max-width: 380px; height: auto; }
-        .close-full { background: #0f172a; color: white; border: none; width: 100%; max-width: 300px; padding: 16px; border-radius: 12px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
-        .empty-state { text-align: center; color: #64748b; margin-top: 40px; }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <header>
-            <h1>SmartPass</h1>
-            <button class="btn-add" onclick="openModal()">+ Nuova Tessera</button>
-        </header>
-
-        <!-- Banner che compare se sei vicino a una tessera salvata -->
-        <div id="proximityBanner" onclick="openNearbyPass()"></div>
-
-        <div id="cardsList" class="cards-grid"></div>
-        <div id="emptyState" class="empty-state" style="display: none;">Nessuna tessera salvata.<br>Tocca "+ Nuova Tessera" per iniziare.</div>
-    </div>
-
-    <!-- Modal Aggiunta -->
-    <div id="cardModal" class="modal">
-        <div class="modal-content">
-            <h2>Aggiungi Tessera</h2>
-            <input type="text" id="passName" placeholder="Nome Negozio (es. Conad)">
-            <input type="text" id="passCode" placeholder="Codice numerico (es. 800123456789)">
-            
-            <div class="gps-section">
-                <span id="gpsStatus">📍 Nessuna posizione GPS associata</span>
-                <button type="button" class="btn-gps" onclick="CaptureGPS()">Registra posizione attuale</button>
-            </div>
-
-            <div class="modal-buttons">
-                <button class="btn btn-cancel" onclick="closeModal()">Annulla</button>
-                <button class="btn btn-save" onclick="savePass()">Salva</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Vista Schermo Intero per la Cassa -->
-    <div id="fullscreenView" class="fullscreen-view">
-        <div>
-            <h2 id="fullTitle">Negozio</h2>
-            <p style="color: #64748b; font-size: 0.9rem;">Avvicina lo schermo al lettore ottico</p>
-        </div>
-        
-        <div class="barcode-box">
-            <svg id="barcode"></svg>
-        </div>
-
-        <button class="close-full" onclick="closeFullscreen()">Chiudi</button>
-    </div>
-
-    <script>
-        // Recupera sia le vecchie tessere che le nuove per non perdere i dati
-        let passes = JSON.parse(localStorage.getItem('smart_passes_gps')) || JSON.parse(localStorage.getItem('smart_passes')) || [];
-        let tempLat = null;
-        let tempLon = null;
-        let activeNearbyPass = null;
-
-        function render() {
-            const list = document.getElementById('cardsList');
-            const empty = document.getElementById('emptyState');
-            list.innerHTML = '';
-            
-            if (passes.length === 0) {
-                empty.style.display = 'block';
-                return;
-            }
-            empty.style.display = 'none';
-
-            passes.forEach(p => {
-                const card = document.createElement('div');
-                card.className = 'pass-card' + (p.isNearby ? ' nearby' : '');
-                card.innerHTML = `
-                    <div class="pass-info" onclick="openFullscreen('${p.name}', '${p.code}')" style="flex:1;">
-                        <h3>${p.name}</h3>
-                        <p>Codice: ${p.code}</p>
-                        ${p.lat ? '<span class="gps-tag">📍 Posizione GPS attiva</span>' : ''}
-                    </div>
-                    <div>
-                        <button onclick="deletePass(${p.id}, event)" style="background:none; border:none; color:#f43f5e; cursor:pointer; font-size:1.2rem; padding: 8px;">🗑️</button>
-                    </div>
-                `;
-                list.appendChild(card);
-            });
-            
-            // Salva mantenendo la compatibilità
-            localStorage.setItem('smart_passes_gps', JSON.stringify(passes));
-            localStorage.setItem('smart_passes', JSON.stringify(passes));
-            checkProximity();
-        }
-
-        function openModal() {
-            document.getElementById('passName').value = '';
-            document.getElementById('passCode').value = '';
-            tempLat = null;
-            tempLon = null;
-            document.getElementById('gpsStatus').innerText = '📍 Nessuna posizione GPS associata';
-            document.getElementById('cardModal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('cardModal').style.display = 'none';
-        }
-
-        function CaptureGPS() {
-            if (navigator.geolocation) {
-                document.getElementById('gpsStatus').innerText = '⏳ Rilevamento posizione in corso...';
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        tempLat = position.coords.latitude;
-                        tempLon = position.coords.longitude;
-                        document.getElementById('gpsStatus').innerText = '📍 Posizione salvata con successo!';
-                    },
-                    (error) => {
-                        alert('Impossibile rilevare la posizione. Controlla che i permessi GPS siano attivi.');
-                        document.getElementById('gpsStatus').innerText = '📍 Errore rilevamento GPS';
-                    },
-                    { enableHighAccuracy: true }
-                );
-            } else {
-                alert('Geolocalizzazione non supportata dal tuo browser.');
-            }
-        }
-
-        function savePass() {
-            const name = document.getElementById('passName').value.trim();
-            const code = document.getElementById('passCode').value.trim();
-            if(!name || !code) {
-                alert('Inserisci sia il nome che il codice!');
-                return;
-            }
-            passes.push({ 
-                id: Date.now(), 
-                name, 
-                code, 
-                lat: tempLat, 
-                lon: tempLon,
-                isNearby: false
-            });
-            closeModal();
-            render();
-        }
-
-        function deletePass(id, event) {
-            event.stopPropagation();
-            if(confirm('Vuoi eliminare questa tessera?')) {
-                passes = passes.filter(p => p.id !== id);
-                render();
-            }
-        }
-
-        function openFullscreen(name, code) {
-            document.getElementById('fullTitle').innerText = name;
-            document.getElementById('fullscreenView').style.display = 'flex';
-            
-            // Genera il codice a barre visivo CODE128
-            try {
-                JsBarcode("#barcode", code, {
-                    format: "CODE128",
-                    lineColor: "#000000",
-                    width: 2.5,
-                    height: 120,
-                    displayValue: true,
-                    fontSize: 20,
-                    margin: 10,
-                    background: "#ffffff"
-                });
-            } catch(e) {
-                alert("Codice non valido per la generazione del codice a barre.");
-            }
-        }
-
-        function closeFullscreen() {
-            document.getElementById('fullscreenView').style.display = 'none';
-        }
-
-        // Calcolo distanza GPS (Formula di Haversine in metri)
-        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371000;
-            const dLat = deg2rad(lat2-lat1);
-            const dLon = deg2rad(lon2-lon1);
-            const a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function deg2rad(deg) {
-            return deg * (Math.PI/180);
-        }
-
-        function checkProximity() {
-            if (!navigator.geolocation) return;
-            navigator.geolocation.watchPosition((position) => {
-                const userLat = position.coords.latitude;
-                const userLon = position.coords.longitude;
-                let foundNearby = null;
-
-                passes.forEach(p => {
-                    if (p.lat && p.lon) {
-                        const distance = getDistanceFromLatLonInMeters(userLat, userLon, p.lat, p.lon);
-                        if (distance <= 50) {
-                            p.isNearby = true;
-                            foundNearby = p;
-                        } else {
-                            p.isNearby = false;
-                        }
-                    }
-                });
-
-                const banner = document.getElementById('proximityBanner');
-                if (foundNearby) {
-                    activeNearbyPass = foundNearby;
-                    banner.style.display = 'block';
-                    banner.innerText = `🏪 Sei vicino a ${foundNearby.name}! Tocca qui per aprire la tessera`;
-                } else {
-                    banner.style.display = 'none';
-                }
-            }, (error) => {}, { enableHighAccuracy: true });
-        }
-
-        function openNearbyPass() {
-            if (activeNearbyPass) {
-                openFullscreen(activeNearbyPass.name, activeNearbyPass.code);
-            }
-        }
-
-        render();
-    </script>
-</body>
-</html>
+        .btn { flex: 1; padding
